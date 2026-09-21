@@ -25,7 +25,7 @@ A standalone Modmail Discord bot. Lets server members message staff privately th
 ## Tech Stack
 
 - **Bot:** Node.js, TypeScript, discord.js v14
-- **Storage:** MongoDB, better-sqlite3 (legacy log import only)
+- **Storage:** MongoDB, better-sqlite3
 - **API:** Express — serves the public log-link viewer (no auth) and a Discord-OAuth-gated dashboard API (staff-only, no frontend included — see below)
 
 ## Setup
