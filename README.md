@@ -25,8 +25,8 @@ A standalone Modmail Discord bot. Lets server members message staff privately th
 ## Tech Stack
 
 - **Bot:** Node.js, TypeScript, discord.js v14
-- **Storage:** MongoDB (primary), better-sqlite3 (legacy log import only)
-- **API:** Express, Discord OAuth — powers the log-link viewer and staff authentication
+- **Storage:** MongoDB, better-sqlite3 (legacy log import only)
+- **API:** Express — serves the public log-link viewer (no auth) and a Discord-OAuth-gated dashboard API (staff-only, no frontend included — see below)
 
 ## Setup
 
@@ -43,11 +43,13 @@ A standalone Modmail Discord bot. Lets server members message staff privately th
    | `OWNER_ID` | Your own Discord account ID (the bot owner) |
    | `DEV_ID` | The developer's Discord account ID |
    | `ALERT_CHANNEL_ID` | The Discord channel ID where the bot posts error alerts |
-   | `DISCORD_CLIENT_ID` | Your bot's application ID, used for the log-link viewer's login |
-   | `DISCORD_CLIENT_SECRET` | Your bot's application secret, used for the log-link viewer's login |
-   | `DISCORD_REDIRECT_URI` | Where Discord sends people back to after logging in |
    | `DASHBOARD_URL` | The web address this bot's own API is reachable at — used to build `/mail action:log-link` links |
+   | `DISCORD_CLIENT_ID` | Your bot's application ID |
+   | `DISCORD_CLIENT_SECRET` | Your bot's application secret |
+   | `DISCORD_REDIRECT_URI` | Where Discord sends people back to after logging in |
    | `SESSION_COOKIE_SECRET` | A random string used to keep sessions secure |
+
+   The last four are required to start the bot at all (nothing here treats them as optional), but they only actually get used if something calls the OAuth-gated dashboard API in `guild-routes.ts`/`modmail-routes.ts` — this repo doesn't ship a frontend for it, so unless you build your own against that API, they can just be filled with any placeholder values. `DASHBOARD_URL` is the one exception — that one's genuinely used, for building `/mail action:log-link` URLs.
 
 3. Run it:
    - `npm run dev` — local development (uses `dev.env`)
