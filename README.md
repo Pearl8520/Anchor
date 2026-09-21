@@ -12,9 +12,8 @@ A standalone Modmail Discord bot. Lets server members message staff privately th
 - **Suspend / Unsuspend** — pause a thread without closing it.
 - **Blocking** — block/unblock a user from opening new threads, with a reason staff can see but the user never does.
 - **Reminders** — optional pings for threads that have gone quiet past a configurable hour threshold.
-- **Transcripts** — full conversation logs, plus a public log-link a user can be given after their thread closes.
+- **Transcripts** — full conversation logs, plus a public log-link a user can be given after their thread closes. `/mail action:transcript` sends a plain `.txt` file straight to Discord; `/mail action:log-link` gives a proper formatted web page instead, served by the bot's own built-in API.
 - **Legacy log import** — optional read-only support for importing transcripts from an existing Dragory/modmailbot SQLite database, so old log links keep working if you're migrating from one.
-- **Dashboard** — a companion website (`website/`) with Discord OAuth login, letting staff manage servers and read transcripts from a browser instead of Discord itself.
 - **Typing relay** — DM-to-thread typing indicators relay live (one-directional by design).
 
 ## Commands
@@ -27,15 +26,12 @@ A standalone Modmail Discord bot. Lets server members message staff privately th
 
 - **Bot:** Node.js, TypeScript, discord.js v14
 - **Storage:** MongoDB (primary), better-sqlite3 (legacy log import only)
-- **API:** Express, Discord OAuth (for the dashboard)
-- **Website:** Vite + React (`website/`), talks to the bot's own API over CORS
+- **API:** Express, Discord OAuth — powers the log-link viewer and staff authentication
 
 ## Setup
 
 1. Install dependencies: `npm install`
 2. Rename `config.env` to `.env` (or `dev.env` for local development) and fill in the following variables:
-
-   **Core bot** — needed either way:
 
    | Variable | Purpose |
    |---|---|
@@ -47,29 +43,16 @@ A standalone Modmail Discord bot. Lets server members message staff privately th
    | `OWNER_ID` | Your own Discord account ID (the bot owner) |
    | `DEV_ID` | The developer's Discord account ID |
    | `ALERT_CHANNEL_ID` | The Discord channel ID where the bot posts error alerts |
-
-   **Dashboard website** — only needed if you're running the `website/` login/dashboard:
-
-   | Variable | Purpose |
-   |---|---|
-   | `DISCORD_CLIENT_ID` | Your bot's application ID, used for website login |
-   | `DISCORD_CLIENT_SECRET` | Your bot's application secret, used for website login |
-   | `DISCORD_REDIRECT_URI` | Where Discord sends people back to after logging into the website |
-   | `DASHBOARD_URL` | The web address where the dashboard website is hosted |
-   | `SESSION_COOKIE_SECRET` | A random string used to keep website logins secure |
+   | `DISCORD_CLIENT_ID` | Your bot's application ID, used for the log-link viewer's login |
+   | `DISCORD_CLIENT_SECRET` | Your bot's application secret, used for the log-link viewer's login |
+   | `DISCORD_REDIRECT_URI` | Where Discord sends people back to after logging in |
+   | `DASHBOARD_URL` | The web address this bot's own API is reachable at — used to build `/mail action:log-link` links |
+   | `SESSION_COOKIE_SECRET` | A random string used to keep sessions secure |
 
 3. Run it:
    - `npm run dev` — local development (uses `dev.env`)
    - `npm run prod` — production (installs deps, builds, and starts)
    - `npm run start:built` — build and start without reinstalling dependencies
-
-## Website
-
-`/mail action:transcript` will technically work with no web server at all — it sends a plain `.txt` file straight to Discord, one raw line per message (timestamp, direction, author ID, body). It's not a real formatted transcript view though, just a bare text dump.
-
-For an actual properly displayed transcript, you need the web side up: `/mail action:log-link` hands back a `${DASHBOARD_URL}/logs/...` link, served by the bot's own built-in API (always running as part of this bot's process). That's what shows transcripts correctly, so in practice the webpage isn't really optional if you want transcripts to look right — set `DASHBOARD_URL` to wherever you're actually hosting it.
-
-The separate login/staff dashboard in `website/` is its own thing on top of that — `cd website && npm install && npm run dev` to run it locally. It talks to this bot's API (`/api/auth`, `/api`) over CORS, configured for your `DASHBOARD_URL` and `http://localhost:5173`.
 
 ## License
 
