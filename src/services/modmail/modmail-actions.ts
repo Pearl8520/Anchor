@@ -103,8 +103,18 @@ export async function backfillThreadChatHistory(thread: IRawModmailThread, chann
 // Actions that only make sense while sitting inside the thread channel itself — snippet management is
 // intentionally excluded, since staff shouldn't need to be mid-conversation just to add a canned reply.
 const THREAD_SCOPED_ACTIONS = new Set([
-    'reply', 'anonreply', 'edit', 'close', 'block', 'move', 'claim', 'unclaim', 'suspend', 'unsuspend', 'transcript', 'log-link', 'logs', 'add-staff', 'remove-staff', 'snippet-send'
+    'reply', 'anonreply', 'edit', 'close', 'close-cancel', 'block', 'move', 'claim', 'unclaim', 'suspend', 'unsuspend', 'transcript', 'log-link', 'logs', 'add-staff', 'remove-staff', 'snippet-send'
 ]);
+
+// No timestring dependency in this bot (unlike Nihility) — a small hand-rolled parser instead of adding a
+// new npm dependency just for this one feature. Matches the same `[eg: 10m, 2h, 1d]` shape.
+const DURATION_UNIT_MS: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
+function parseSimpleDuration(raw: string): number | null {
+    const match = raw.trim().toLowerCase().match(/^(\d+)\s*([smhdw])$/);
+    if (!match) return null;
+    const ms = Number(match[1]) * DURATION_UNIT_MS[match[2]];
+    return ms > 0 ? ms : null;
+}
 
 // Same reasoning as transcript below — these are read-only history lookups, so they must keep working
 // on an already-closed (archived) thread too, not just an active one.
@@ -242,12 +252,31 @@ export async function mailAction(interaction: InGuildChatInputInteraction): Prom
 
         if (action === 'close') {
             const reason = interaction.options.getString('text') ?? 'No reason given.';
+            const durationRaw = interaction.options.getString('duration');
+
+            if (durationRaw) {
+                const durationMs = parseSimpleDuration(durationRaw);
+                if (!durationMs) return void interaction.editReply({ content: 'That duration isn\'t valid. `[eg: 10m, 2h, 1d]`' });
+
+                const scheduledCloseAt = Date.now() + durationMs;
+                await database.modmailThreads.update(thread.id, { scheduledCloseAt, scheduledCloseReason: reason, scheduledCloseBy: interaction.user.id });
+                await channel.send({ embeds: [modmailNoticeEmbed(`⏰ Thread scheduled to close <t:${Math.floor(scheduledCloseAt / 1000)}:R> by ${interaction.user}.\nReason: ${reason}\nSend another message here to cancel automatically, or run \`/mail action:Cancel Scheduled Close\`.`)] });
+                return void interaction.editReply({ content: `✅ Thread will close <t:${Math.floor(scheduledCloseAt / 1000)}:R> unless cancelled first.` });
+            }
+
             // Replied before closing, not after — closeModmailThread deletes this same channel, and
             // this interaction's reply lives in it; editReply-ing afterward 404s (Unknown Message) every
             // single time since the channel (and its messages) is already gone by then.
             await interaction.editReply({ content: '✅ Thread closed.' });
             await closeModmailThread(interaction.guild, thread, channel, reason, interaction.user.toString());
             return;
+        }
+
+        if (action === 'close-cancel') {
+            if (!thread.scheduledCloseAt) return void interaction.editReply({ content: 'This thread has no scheduled close pending.' });
+            await database.modmailThreads.update(thread.id, { scheduledCloseAt: null, scheduledCloseReason: null, scheduledCloseBy: null });
+            await channel.send({ embeds: [modmailNoticeEmbed(`⏰ Scheduled close cancelled by ${interaction.user}.`)] });
+            return void interaction.editReply({ content: '✅ Scheduled close cancelled.' });
         }
 
         if (action === 'block') {
