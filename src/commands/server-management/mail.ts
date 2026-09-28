@@ -11,6 +11,7 @@ export default new InteractionCommand({
                 { name: 'Real Reply', value: 'anonreply' },
                 { name: 'Edit', value: 'edit' },
                 { name: 'Close', value: 'close' },
+                { name: 'Cancel Scheduled Close', value: 'close-cancel' },
                 { name: 'Open', value: 'open' },
                 { name: 'Reopen', value: 'reopen' },
                 { name: 'Move Category', value: 'move' },
@@ -32,6 +33,7 @@ export default new InteractionCommand({
             )
         )
         .addStringOption(o => o.setName('text').setDescription('Reply text / close reason / snippet body / new text (edit).'))
+        .addStringOption(o => o.setName('duration').setDescription('Close only — delay before closing, e.g. 1h, 30m, 2d. Omit to close immediately.'))
         .addIntegerOption(o => o.setName('message_number').setDescription('The #N shown on your own reply in the thread (for edit).'))
         .addStringOption(o => o.setName('category').setDescription('Target category (for move/open) — omit on open to use the current channel instead.').setAutocomplete(true))
         .addStringOption(o => o.setName('trigger').setDescription('Snippet trigger (for snippet actions).'))
