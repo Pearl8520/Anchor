@@ -44,6 +44,15 @@ export interface IRawModmailThread {
     username?: string | null; // snapshot at creation time — mainly for migrated legacy threads, whose user may no longer be cached/resolvable live
     suspended?: boolean; // pauses relay both ways without closing/archiving the thread — orthogonal to status (a suspended thread is still 'open' for duplicate-thread-prevention purposes), toggled via /mail action:Suspend|Unsuspend
     logToken?: string | null; // long UUID (crypto.randomUUID()) used in the public /logs/:id link — separate from the short internal `id` so that isn't what's exposed publicly. Generated at thread creation for new threads; lazily generated+persisted on first Log Link use for older threads that predate this field.
+    // /mail action:Close duration:<e.g. 1h> — schedules a future close instead of closing immediately.
+    // Cleared (set back to null) the instant a new from-user DM lands (handleIncomingDm) or the thread
+    // actually closes (closeModmailThread), same "orthogonal state layered on top of status: 'open'"
+    // treatment `suspended` already gets. scheduledCloseReason/By are only meaningful while
+    // scheduledCloseAt is set — carried through to the real close notice once modmail-scheduled-close-task
+    // fires closeModmailThread for real.
+    scheduledCloseAt?: number | null;
+    scheduledCloseReason?: string | null;
+    scheduledCloseBy?: string | null; // staff userId who scheduled it
 }
 
 export type ModmailMessageDirection = 'from-user' | 'to-user' | 'staff-chat' | 'system';
