@@ -68,6 +68,11 @@ export default class ModmailThreadManager {
         }).toArray();
     }
 
+    /** Used by modmail-scheduled-close-task — open threads whose scheduled close time has arrived. */
+    async fetchDueScheduledCloses(now: number): Promise<IRawModmailThread[]> {
+        return this.collection.find({ status: 'open', scheduledCloseAt: { $lte: now } }).toArray();
+    }
+
     /**
      * Used to assign the next human-friendly threadNumber for a guild — based on the highest number
      * that currently exists, not a running count of documents. This matters once transcripts can be
