@@ -96,7 +96,10 @@ export async function buildTranscriptFile(thread: IRawModmailThread): Promise<At
 
 /** Shared by /mail action:Close and the auto-close that happens when staff blocks a user with an open thread. */
 export async function closeModmailThread(guild: Guild, thread: IRawModmailThread, channel: ThreadChannel, reason: string, actorMention: string): Promise<void> {
-    await database.modmailThreads.update(thread.id, { status: 'closed', closedAt: Date.now() });
+    // Clears any pending scheduled close too — redundant once status flips away from 'open' (which already
+    // excludes it from modmail-scheduled-close-task's own query) but keeps the record itself clean rather
+    // than leaving a stale timestamp behind on a thread that's already closed.
+    await database.modmailThreads.update(thread.id, { status: 'closed', closedAt: Date.now(), scheduledCloseAt: null, scheduledCloseReason: null, scheduledCloseBy: null });
 
     const user = await guild.client.users.fetch(thread.userId).catch(() => null);
     await user?.send({ embeds: [modmailNoticeEmbed(`Your Modmail thread has been closed.\nReason: ${reason}`)] }).catch(() => null);
@@ -448,9 +451,16 @@ export async function handleIncomingDm(message: Message): Promise<void> {
         createdAt: Date.now()
     });
 
+    // A pending scheduled close (see /mail action:Close's own duration option) is cancelled the instant
+    // the user sends another message — same "still an active conversation" signal the reminder-reset
+    // above already acts on, just for the opposite problem (closing too early instead of too late).
+    if (thread.scheduledCloseAt) {
+        await threadChannel.send({ embeds: [modmailNoticeEmbed(`⏰ Scheduled close cancelled — ${displayName} sent a new message.`)] }).catch(() => null);
+    }
+
     // Feeds the unanswered-thread reminder — clearing reminderSentAt here means a later message that's
     // still unanswered can trigger a fresh reminder, not just a single one-time ping ever.
-    await database.modmailThreads.update(thread.id, { lastMessageDirection: 'from-user', lastMessageAt: Date.now(), reminderSentAt: null });
+    await database.modmailThreads.update(thread.id, { lastMessageDirection: 'from-user', lastMessageAt: Date.now(), reminderSentAt: null, scheduledCloseAt: null, scheduledCloseReason: null, scheduledCloseBy: null });
 }
 
 export interface ReplyResult { success: boolean; message: string; }
