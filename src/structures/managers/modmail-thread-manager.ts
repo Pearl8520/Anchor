@@ -40,7 +40,7 @@ export default class ModmailThreadManager {
         return this.collection.find({ userId, guildId: { $in: guildIds }, status: 'closed' }).sort({ closedAt: -1 }).toArray();
     }
 
-    /** Used by /modmail action:User-History — every thread (any status/category) a user has had in one server, server-scoped only, never across other servers the bot is in. */
+    /** Used by /modmail-settings' User History action — every thread (any status/category) a user has had in one server, server-scoped only, never across other servers the bot is in. */
     async fetchAllForUserInGuild(guildId: string, userId: string): Promise<IRawModmailThread[]> {
         return this.collection.find({ guildId, userId }).sort({ createdAt: -1 }).toArray();
     }
