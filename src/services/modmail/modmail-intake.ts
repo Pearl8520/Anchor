@@ -5,7 +5,7 @@ import { ErrorHandler } from "../../structures/error-handler.js";
 import { Colors } from "../../utils/util.js";
 import { nanoid } from "nanoid";
 import { randomUUID } from "crypto";
-import { buildStickerRelay, buildRelayPayload, fetchNonMediaFiles, getMediaAttachmentUrls, relayAttachmentsToLogChannel, modmailNoticeEmbed, getOrCreateRelayWebhook, convertHeicAttachments } from "./modmail-relay-content.js";
+import { buildStickerRelay, buildRelayPayload, fetchNonMediaFiles, getMediaAttachmentUrls, relayAttachmentsToLogChannel, modmailNoticeEmbed, getOrCreateRelayWebhook, convertHeicAttachments, resolveEmbedColor } from "./modmail-relay-content.js";
 
 export interface MutualEnabledGuild { guildId: string; guildName: string; }
 
@@ -234,7 +234,7 @@ export async function createModmailThread(actingGuild: Guild, userId: string, ca
                 const webhook = await getOrCreateRelayWebhook(parentChannel);
                 const payload = hasMedia
                     ? buildRelayPayload(text, mediaUrls, nonMediaFiles, undefined, undefined, convertedImages)
-                    : { embeds: text ? [modmailNoticeEmbed(text)] : [] };
+                    : { embeds: text ? [modmailNoticeEmbed(text, resolveEmbedColor(settings.userEmbedColor))] : [] };
                 const relayed = webhook
                     ? await webhook.send({ username: displayName, avatarURL: member.displayAvatarURL(), threadId: thread.id, ...payload })
                     : await thread.send(buildRelayPayload(text ? `**${displayName}:** ${text}` : undefined, mediaUrls, nonMediaFiles, undefined, undefined, convertedImages));
@@ -253,7 +253,7 @@ export async function createModmailThread(actingGuild: Guild, userId: string, ca
 
             // Confirms to the user, right on their own DM, that it actually opened the thread — matches
             // the same confirmation every later message into this thread already gets (see handleIncomingDm).
-            await firstMessage.react('✅').catch(() => null);
+            await firstMessage.react(settings.confirmationEmoji ?? '✅').catch(() => null);
         }
 
         return { success: true, message: 'Thread created.', threadId };
@@ -306,13 +306,13 @@ async function promptCategoryPicker(guild: Guild, settings: IRawModmailSettings,
         return;
     }
 
-    await confirmed.update({ embeds: [modmailNoticeEmbed(`Opening a thread for **${categoryLabel}**...`)], components: [] }).catch(() => null);
+    await confirmed.update({ embeds: [modmailNoticeEmbed(`Opening a thread for **${categoryLabel}**...`, resolveEmbedColor(settings.staffEmbedColor), `${settings.noticeIcon ?? '🛡️'} Creating a Thread`)], components: [] }).catch(() => null);
 
     const result = await createModmailThread(guild, message.author.id, categoryKey, message);
     await confirmed.followUp({
-        embeds: [modmailNoticeEmbed(
-            result.success ? `✅ Your Modmail thread in **${guild.name}** has been created — staff will reply here.` : result.message
-        )]
+        embeds: result.success
+            ? [modmailNoticeEmbed(`Your Modmail thread in **${guild.name}** has been created — staff will reply here.`, resolveEmbedColor(settings.staffEmbedColor), `${settings.noticeIcon ?? '🛡️'} Contact Confirmed`)]
+            : [modmailNoticeEmbed(result.message)]
     }).catch(() => null);
 }
 
