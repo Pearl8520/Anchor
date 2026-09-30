@@ -5,7 +5,7 @@ import { database } from "../../core/database.js";
 import { IRawModmailThread, IRawModmailSettings } from "../../types/database.js";
 import { handleRawDmIntake, resolveMutualEnabledGuilds, resolveEffectiveStaffRoleIds, buildThreadHeaderEmbed } from "./modmail-intake.js";
 import { ErrorHandler } from "../../structures/error-handler.js";
-import { buildStickerRelay, fetchNonMediaFiles, buildRelayPayload, getMediaAttachmentUrls, relayAttachmentsToLogChannel, modmailNoticeEmbed, getOrCreateRelayWebhook, convertHeicAttachments, fetchMediaForReupload } from "./modmail-relay-content.js";
+import { buildStickerRelay, fetchNonMediaFiles, buildRelayPayload, getMediaAttachmentUrls, relayAttachmentsToLogChannel, modmailNoticeEmbed, getOrCreateRelayWebhook, convertHeicAttachments, fetchMediaForReupload, resolveEmbedColor } from "./modmail-relay-content.js";
 import { dashboardEnv } from "../../config.js";
 
 const disableModmail = (guildId: string) => database.modmailSettings.setEnabled(guildId, false);
@@ -86,7 +86,8 @@ export async function buildTranscriptFile(thread: IRawModmailThread): Promise<At
     const messages = await database.modmailMessages.fetchByThread(thread.id);
     const header = `Thread #${thread.threadNumber} — Opened by ${thread.username || 'Unknown'} (User ID: ${thread.userId})\n\n`;
     const lines = messages.map(m => {
-        const line = `[${new Date(m.createdAt).toISOString()}] (${m.direction}) ${m.authorId}: ${m.body}`;
+        const name = m.direction === 'from-user' ? thread.username : m.displayName;
+        const line = `[${new Date(m.createdAt).toISOString()}] (${m.direction}) ${m.authorId}${name ? ` (${name})` : ''}: ${m.body}`;
         const attachments = m.attachmentUrls.map(url => `    ${url}`).join('\n');
         return attachments ? `${line}\n${attachments}` : line;
     });
@@ -101,12 +102,14 @@ export async function closeModmailThread(guild: Guild, thread: IRawModmailThread
     // than leaving a stale timestamp behind on a thread that's already closed.
     await database.modmailThreads.update(thread.id, { status: 'closed', closedAt: Date.now(), scheduledCloseAt: null, scheduledCloseReason: null, scheduledCloseBy: null });
 
+    const settings = await database.modmailSettings.fetch(guild.id);
+    const staffColor = resolveEmbedColor(settings?.staffEmbedColor);
+
     const user = await guild.client.users.fetch(thread.userId).catch(() => null);
-    await user?.send({ embeds: [modmailNoticeEmbed(`Your Modmail thread has been closed.\nReason: ${reason}`)] }).catch(() => null);
+    await user?.send({ embeds: [modmailNoticeEmbed(`Your Modmail thread has been closed.\nReason: ${reason}`, staffColor, `${settings?.noticeIcon ?? '🛡️'} Your Ticket Has Been Closed`)] }).catch(() => null);
 
     await channel.send({ embeds: [modmailNoticeEmbed(`🔒 Thread closed by ${actorMention}.\nReason: ${reason}\nThis channel is being deleted — the full history stays available via \`/mail action:Log Link\` or \`/mail action:Transcript\`.`)] }).catch(() => null);
 
-    const settings = await database.modmailSettings.fetch(guild.id);
     const category = settings?.categories.find(c => c.key === thread.categoryKey);
     if (category?.transcriptChannelId) {
         const transcriptChannel = await guild.channels.fetch(category.transcriptChannelId).catch(() => null);
@@ -200,7 +203,7 @@ export async function reopenModmailThread(guild: Guild, thread: IRawModmailThrea
     // prompt, they already got a direct confirmation there and a second DM would just be noise.
     if (actorUserId !== thread.userId) {
         const user = await guild.client.users.fetch(thread.userId).catch(() => null);
-        await user?.send({ embeds: [modmailNoticeEmbed(`Your Modmail thread in **${guild.name}** has been reopened by staff — you can reply here again.`)] }).catch(() => null);
+        await user?.send({ embeds: [modmailNoticeEmbed(`Your Modmail thread in **${guild.name}** has been reopened by staff — you can reply here again.`, resolveEmbedColor(settings?.staffEmbedColor), `${settings?.noticeIcon ?? '🛡️'} Thread Reopened`)] }).catch(() => null);
     }
 
     return { success: true, message: `✅ Reopened thread #${thread.threadNumber}.` };
@@ -413,7 +416,7 @@ export async function handleIncomingDm(message: Message): Promise<void> {
         if (webhook) {
             const payload = hasMedia
                 ? buildRelayPayload(text, mediaUrls, nonMediaFiles, undefined, undefined, convertedImages)
-                : { embeds: text ? [modmailNoticeEmbed(text)] : [] };
+                : { embeds: text ? [modmailNoticeEmbed(text, resolveEmbedColor(settingsForLog?.userEmbedColor))] : [] };
             relayed = await webhook.send({ username: displayName, avatarURL: message.author.displayAvatarURL(), threadId: threadChannel.id, ...payload });
         } else {
             relayed = await threadChannel.send(buildRelayPayload(text ? `**${displayName}:** ${text}` : undefined, mediaUrls, nonMediaFiles, undefined, undefined, convertedImages));
@@ -425,7 +428,7 @@ export async function handleIncomingDm(message: Message): Promise<void> {
 
     // Confirms to the user, right on their own DM, that it actually made it into the thread —
     // otherwise there's no visible signal on their end that anything happened at all.
-    await message.react('✅').catch(() => null);
+    await message.react(settingsForLog?.confirmationEmoji ?? '✅').catch(() => null);
 
     // A separate bot message (not folded into the webhook-impersonated relay above) pinging staff so a
     // follow-up reply doesn't just sit there relying on Discord's own channel notification settings —
@@ -504,12 +507,15 @@ export async function replyToModmailThread(
     const categoryForLog = settingsForLog?.categories.find(c => c.key === thread.categoryKey);
     await relayAttachmentsToLogChannel(channel.guild, categoryForLog, thread.threadNumber, displayName, mediaUrls, nonMediaFiles, convertedImages);
 
-    // Always prefixed with the shown identity, even when there's no text (e.g. an image-only reply) —
-    // previously this was only added when `text` was non-empty, so an attachment sent with no message
-    // reached the user with no attribution at all.
+    const staffColor = resolveEmbedColor(settingsForLog?.staffEmbedColor);
+
+    // The `author` param (name + footer) is passed unconditionally, not just when `text` is non-empty —
+    // an image-only reply still has media, so it takes buildRelayPayload's Components V2 branch, which
+    // includes the author line regardless of whether `text` itself is empty. Without this, an
+    // attachment sent with no message would reach the user with no attribution at all.
     // Logged, not silently swallowed — a failure here (e.g. a Discord-side attachment/media-gallery
     // rejection, not just "DMs closed") previously left no trace anywhere to diagnose from.
-    const dmSent = await user.send(buildRelayPayload(`**${displayName}:**${text ? ` ${text}` : ''}`, mediaUrls, nonMediaFiles, undefined, undefined, convertedImages))
+    const dmSent = await user.send(buildRelayPayload(text, mediaUrls, nonMediaFiles, { name: displayName, footer: 'You can reply by sending a message here' }, staffColor, convertedImages))
         .catch(err => { ErrorHandler.handle(err, { context: 'modmail-relay replyToModmailThread (dm send)', emitAlert: false }); return null; });
     if (!dmSent) {
         await channel.send({ embeds: [modmailNoticeEmbed("⚠️ Couldn't DM the user — they may have DMs closed or have blocked the bot.")] }).catch(() => null);
@@ -529,7 +535,7 @@ export async function replyToModmailThread(
     const messageNumber = (await database.modmailMessages.countStaffReplies(thread.id)) + 1;
     const threadFooter = `#${messageNumber}${anonymous ? '' : ' · shown to user as role only'}`;
     const staffThreadName = roleName !== staffDisplayName ? `${roleName} (${staffDisplayName})` : staffDisplayName;
-    const sendThreadCopy = () => channel.send(buildRelayPayload(text || '*(attachment)*', mediaUrls, nonMediaFiles, { name: staffThreadName, footer: threadFooter }, undefined, convertedImages));
+    const sendThreadCopy = () => channel.send(buildRelayPayload(text || '*(attachment)*', mediaUrls, nonMediaFiles, { name: staffThreadName, footer: threadFooter }, staffColor, convertedImages));
     const relayed = permissionGuard
         ? await permissionGuard(
             { guild: channel.guild, module: 'modmail', moduleLabel: 'Modmail', channelId: channel.id, permission: 'SendMessagesInThreads', disableModule: disableModmail },
@@ -538,7 +544,7 @@ export async function replyToModmailThread(
         : await sendThreadCopy().catch(() => null);
     // Confirms right on the thread copy that the DM actually reached the user — reaching this line
     // already means dmSent succeeded above, so this is a delivery confirmation, not a hopeful guess.
-    await relayed?.react('✅').catch(() => null);
+    await relayed?.react(settingsForLog?.confirmationEmoji ?? '✅').catch(() => null);
 
     await database.modmailMessages.create({
         id: nanoid(12),
