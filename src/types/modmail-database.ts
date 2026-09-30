@@ -23,6 +23,19 @@ export interface IRawModmailSettings {
     categories: IModmailCategory[]; // parentChannelId channels live in `guildId`
     panelChannelId: string | null; // informational — where the ticket panel was last posted (lives in `linkedGuildId` if set, else `guildId`)
     panelMessageId: string | null; // the panel message itself — re-posting to the same channel edits this message in place instead of duplicating it
+    // Per-server embed customization for the two message directions — staffEmbedColor covers every
+    // staff-authored embed (the reply sent to the user's own DM, and its copy in the staff thread);
+    // userEmbedColor covers the thread-side embed representing what the user sent. Hex string
+    // (`#RRGGBB`); undefined/null = the module's own default purple for both.
+    staffEmbedColor?: string | null;
+    userEmbedColor?: string | null;
+    // Reaction posted to confirm a message was actually relayed/delivered (new thread's first message,
+    // a user's follow-up, a staff reply reaching the user's DM) — unicode emoji as-is, or a custom
+    // emoji's `name:id` (react()-compatible identifier). undefined/null = ✅.
+    confirmationEmoji?: string | null;
+    // Icon prefixed on the user-facing DM notice embeds' titles (Thread Created/Contact Confirmed/Thread
+    // Reopened/Ticket Closed) — same emoji format as confirmationEmoji. undefined/null = 🛡️.
+    noticeIcon?: string | null;
 }
 
 export type ModmailThreadStatus = 'open' | 'closed';
