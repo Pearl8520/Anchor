@@ -3,9 +3,16 @@ import convert from "heic-convert";
 import { IModmailCategory } from "../../types/database.js";
 import { Colors } from "../../utils/util.js";
 
-/** A consistent embed shell for Modmail's system notices (thread opened/closed/reopened/claimed, etc.), replacing what used to be bare content strings. Kept here (not modmail-relay.ts/modmail-intake.ts) for the same circular-import reason as relayAttachmentsToLogChannel below — both files need it. */
-export function modmailNoticeEmbed(description: string, color: ColorResolvable = Colors.EmiliaPurple): EmbedBuilder {
-    return new EmbedBuilder().setColor(color).setDescription(description);
+/** Converts a settings doc's stored `#RRGGBB` string (or null/undefined) into a ColorResolvable the embed builders actually accept — discord.js's ColorResolvable type doesn't accept a plain `string`, only its own template-literal/numeric forms, so every configurable-color call site needs this instead of passing the stored hex straight through. */
+export function resolveEmbedColor(hex: string | null | undefined): number | undefined {
+    return hex ? parseInt(hex.slice(1), 16) : undefined;
+}
+
+/** A consistent embed shell for Modmail's system notices (thread opened/closed/reopened/claimed, etc.), replacing what used to be bare content strings. Kept here (not modmail-relay.ts/modmail-intake.ts) for the same circular-import reason as relayAttachmentsToLogChannel below — both files need it. `title` is optional — only the user-facing DM notices (thread created/contact confirmed/closed) set one; the many in-thread notices stay description-only. */
+export function modmailNoticeEmbed(description: string, color: ColorResolvable = Colors.EmiliaPurple, title?: string): EmbedBuilder {
+    const embed = new EmbedBuilder().setColor(color).setDescription(description);
+    if (title) embed.setTitle(title);
+    return embed;
 }
 
 const RELAY_WEBHOOK_NAME = 'Modmail Relay';
