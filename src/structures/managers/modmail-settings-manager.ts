@@ -109,6 +109,24 @@ export default class ModmailSettingsManager extends CollectionManager<IRawModmai
         if (cached) { cached.panelChannelId = panelChannelId; cached.panelMessageId = panelMessageId; }
     }
 
+    async setEmbedColors(guildId: string, staffEmbedColor: string | null, userEmbedColor: string | null) {
+        await this.updateOne({ guildId }, { $set: { staffEmbedColor, userEmbedColor } });
+        const cached = this.cache.get(guildId);
+        if (cached) { cached.staffEmbedColor = staffEmbedColor; cached.userEmbedColor = userEmbedColor; }
+    }
+
+    async setConfirmationEmoji(guildId: string, confirmationEmoji: string | null) {
+        await this.updateOne({ guildId }, { $set: { confirmationEmoji } });
+        const cached = this.cache.get(guildId);
+        if (cached) cached.confirmationEmoji = confirmationEmoji;
+    }
+
+    async setNoticeIcon(guildId: string, noticeIcon: string | null) {
+        await this.updateOne({ guildId }, { $set: { noticeIcon } });
+        const cached = this.cache.get(guildId);
+        if (cached) cached.noticeIcon = noticeIcon;
+    }
+
     async addCategory(guildId: string, category: Omit<IModmailCategory, 'transcriptChannelId' | 'staffRoleIds'>) {
         await this.fetchOrCreate(guildId); // ensures a settings doc exists to $push into
         const newCategory: IModmailCategory = { ...category, transcriptChannelId: null, staffRoleIds: [] };
@@ -162,7 +180,7 @@ export default class ModmailSettingsManager extends CollectionManager<IRawModmai
         if (cached) cached.categories = cached.categories.filter(c => c.key !== key);
     }
 
-    /** Used by /modmail action:Reset — deletes this guild's whole Modmail config (categories/staff-roles/enabled/link), but never touches threads/messages/blocks, which stay intact as history. */
+    /** Used by /modmail-settings' Reset Configuration action — deletes this guild's whole Modmail config (categories/staff-roles/enabled/link), but never touches threads/messages/blocks, which stay intact as history. */
     async deleteSettings(guildId: string): Promise<void> {
         await this.deleteOne({ guildId });
         this.cache.delete(guildId);
